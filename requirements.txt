@@ -1,0 +1,30 @@
+# Web Framework
+
+fastapi
+uvicorn[standard]
+
+
+# Data Validation & Settings
+
+pydantic
+pydantic-settings
+
+
+# YouTube / Media Processing
+
+yt-dlp
+
+
+# HTTP / Networking
+
+httpx
+
+
+# Multipart / Form Handling
+
+python-multipart
+
+
+# Testing
+pytest
+pytest-asyncio
