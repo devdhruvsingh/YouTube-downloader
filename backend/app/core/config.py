@@ -1,36 +1,43 @@
+import os
 from pathlib import Path
 from typing import List
-from pydantic_settings import BaseSettings
+
+try:
+    # Pydantic v2 preferred location
+    from pydantic_settings import BaseSettings
+except ImportError:
+    # Fallback for Pydantic v1
+    from pydantic import BaseSettings
 
 
+class Settings(BaseSettings):
+    PROJECT_NAME: str = "YouTube Downloader API"
+    VERSION: str = "1.0.0"
+    API_V1_STR: str = "/api/v1"
 
-class Setting(BaseSettings):
-    PROJECT_NAME : str =  "Youtube Downloader API"
-    VERSION : str = "1.0.0"
-    API_V1_STR : str = "/api/v1"
-
-
-# permitted origins
+    # CORS configuration for frontend clients
     ALLOWED_ORIGINS: List[str] = [
-        "https://localhost:3000",
-        "https://localhost:5173",
-        "https://127.0.0.1:5173"
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
     ]
 
-# file storage paths and limits
-    BASE_DIR : Path = PATH(__file__).resolve().parent.parent.parent
+    # Directories
+    BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent
     DOWNLOAD_DIR: Path = BASE_DIR / "downloads"
-    MAX_FIlE_SIZE_MB : int = 1024 # this is the max size for the file
+
+    # Job & storage constraints
+    MAX_FILE_SIZE_MB: int = 500
+    TEMP_FILE_TTL_HOURS: int = 1
 
     class Config:
         env_file = ".env"
         case_sensitive = True
 
 
+# Instantiate global settings
 settings = Settings()
 
-# taget dowload directory exists
+# Ensure the downloads output folder exists on startup
 settings.DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
-
-

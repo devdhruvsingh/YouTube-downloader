@@ -13,7 +13,7 @@ class VideoAnalyzeRequest(BaseModel):
             raise ValueError("Invalid Youtube URL provided")
         return value
 
-class FormatOption(BaseMode):
+class FormatOption(BaseModel):
     format_id : str
     ext : str
     resolution: Optional[str] = "audio only"
@@ -26,7 +26,7 @@ class VideoInfoResponse(BaseModel):
     video_id : str
     title : str
     author : str
-    duration : str
+    duration : int
     thumbnail : HttpUrl
     description : Optional[str]= None
     formats : List[FormatOption]

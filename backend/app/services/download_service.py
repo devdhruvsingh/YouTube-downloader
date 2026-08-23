@@ -1,17 +1,17 @@
 import uuid
-from typing import Dict
+from typing import Dict, Optional
 import yt_dlp
-from app.core.config import settings
-from app.schemas.download import DownloadTaskResponse, DownloadStatus
 
-# In-memory storage for tracking job statuses
-download_jobs: Dict[str, DownloadTaskResponse] = {}
+from app.core.config import settings
+from app.schemas.download import DownloadStatus, DownloadTaskResponse
+
+# In-memory task tracker
+jobs_db: Dict[str, DownloadTaskResponse] = {}
 
 
 def init_download_job() -> str:
-    """Generates a unique task ID and initializes job state."""
     task_id = str(uuid.uuid4())
-    download_jobs[task_id] = DownloadTaskResponse(
+    jobs_db[task_id] = DownloadTaskResponse(
         task_id=task_id,
         status=DownloadStatus.PENDING,
         progress_percentage=0.0,
@@ -19,40 +19,48 @@ def init_download_job() -> str:
     return task_id
 
 
-def process_download(task_id: str, url: str, format_id: str):
-    """Executes the download in the background and updates job status."""
-    if task_id not in download_jobs:
+def get_job_status(task_id: str) -> Optional[DownloadTaskResponse]:
+    return jobs_db.get(task_id)
+
+
+def process_download(task_id: str, url: str, format_id: str) -> None:
+    job = jobs_db.get(task_id)
+    if not job:
         return
 
-    job = download_jobs[task_id]
     job.status = DownloadStatus.PROCESSING
 
-    def progress_hook(d):
-        if d["status"] == "downloading":
-            total = d.get("total_bytes") or d.get("total_bytes_estimate") or 1
+    def progress_hook(d: dict):
+        if d.get("status") == "downloading":
+            total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
             downloaded = d.get("downloaded_bytes", 0)
-            job.progress_percentage = round((downloaded / total) * 100, 2)
-        elif d["status"] == "finished":
+            if total > 0:
+                job.progress_percentage = round((downloaded / total) * 100, 2)
+        elif d.get("status") == "finished":
             job.progress_percentage = 100.0
 
-    output_template = str(settings.DOWNLOAD_DIR / f"{task_id}_%(title)s.%(ext)s")
-
     ydl_opts = {
-        "format": format_id,
-        "outtmpl": output_template,
+        # Select best combined MP4 or best available video+audio format
+        "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+        "outtmpl": str(settings.DOWNLOAD_DIR / "%(title)s.%(ext)s"),
         "progress_hooks": [progress_hook],
         "quiet": True,
+        "no_warnings": True,
+        # Bypass YouTube client restrictions
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "web"],
+            }
+        },
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
-        job.status = DownloadStatus.COMPLETED
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
+            job.file_name = settings.DOWNLOAD_DIR.joinpath(filename).name
+            job.status = DownloadStatus.COMPLETED
+            job.progress_percentage = 100.0
     except Exception as e:
         job.status = DownloadStatus.FAILED
         job.error_message = str(e)
-
-
-def get_job_status(task_id: str) -> DownloadTaskResponse | None:
-    """Retrieves the current status of a download job."""
-    return download_jobs.get(task_id)
