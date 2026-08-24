@@ -16,8 +16,3 @@ backend/downloads/
 frontend/node_modules/
 frontend/dist/
 frontend/.DS_Store
-
-# Docker
-Dockerfile
-docker-compose.yml
-.dockerignore
