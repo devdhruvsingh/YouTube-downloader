@@ -1,0 +1,23 @@
+# Git
+.git
+.gitignore
+
+# Python / Backend
+backend/__pycache__/
+backend/.venv/
+backend/venv/
+backend/downloads/
+*.pyc
+*.pyo
+*.pyd
+.env
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.DS_Store
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore

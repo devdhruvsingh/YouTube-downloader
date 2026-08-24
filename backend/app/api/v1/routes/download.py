@@ -1,60 +1,57 @@
-from fastapi import APIRouter, BackgroundTasks, HTTPException, status
+import os
+from fastapi import APIRouter, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from typing import Optional
 
-from app.core.config import settings
-from app.schemas.download import DownloadRequest, DownloadStatus, DownloadTaskResponse
 from app.services.download_service import (
-    get_job_status,
-    init_download_job,
-    process_download,
+    extract_video_info,
+    initiate_download,
+    process_download_task,
+    get_task_status
 )
 
 router = APIRouter()
 
+class AnalyzeRequest(BaseModel):
+    url: str
 
-@router.post("/", response_model=DownloadTaskResponse, status_code=status.HTTP_202_ACCEPTED)
-def start_download(payload: DownloadRequest, background_tasks: BackgroundTasks):
-    task_id = init_download_job()
-    background_tasks.add_task(process_download, task_id, payload.url, payload.format_id)
-    return get_job_status(task_id)
+class DownloadRequest(BaseModel):
+    url: str
+    format_id: Optional[str] = "best"
 
+@router.post("/analyze/")
+async def analyze_video(payload: AnalyzeRequest):
+    try:
+        data = extract_video_info(payload.url)
+        return {"success": True, "data": data}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-@router.get("/{task_id}/status", response_model=DownloadTaskResponse)
-def check_download_status(task_id: str):
-    job = get_job_status(task_id)
-    if not job:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Download task not found.",
-        )
-    return job
+@router.post("/process")
+async def start_download(payload: DownloadRequest, background_tasks: BackgroundTasks):
+    try:
+        task_id = initiate_download(payload.url, payload.format_id)
+        background_tasks.add_task(process_download_task, task_id, payload.url, payload.format_id)
+        return {"success": True, "task_id": task_id}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
+@router.get("/status/{task_id}")
+async def check_status(task_id: str):
+    status = get_task_status(task_id)
+    if not status:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return {"success": True, "data": status}
 
-@router.get("/{task_id}/file")
-def get_downloaded_file(task_id: str):
-    job = get_job_status(task_id)
-    if not job or job.status != DownloadStatus.COMPLETED:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File is not ready or task does not exist.",
-        )
-
-    if not job.file_name:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No filename recorded for this download task.",
-        )
-
-    file_path = settings.DOWNLOAD_DIR / job.file_name
-
-    if not file_path.is_file():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Requested file does not exist on server storage.",
-        )
-
-    return FileResponse(
-        path=file_path,
-        filename=job.file_name,
-        media_type="application/octet-stream",
-    )
+@router.get("/file/{task_id}")
+async def get_downloaded_file(task_id: str):
+    status = get_task_status(task_id)
+    if not status or status.get("status") != "completed":
+        raise HTTPException(status_code=404, detail="File not ready or task not found")
+    
+    file_path = status.get("file_path")
+    if not file_path or not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File missing on server disk")
+    
+    return FileResponse(file_path, media_type='application/octet-stream', filename=os.path.basename(file_path))
